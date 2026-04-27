@@ -77,3 +77,18 @@ All issues are stored in a **tickets table** with:
 ---
 
 ## 🔁 Workflow
+Email Trigger
+   ↓
+Preprocessing (JavaScript)
+   ↓
+LLM Classifier 1 (Feedback vs Issue)
+   ↓
+IF Node
+
+FEEDBACK:
+   → Store / Acknowledge
+
+ISSUE:
+   → LLM Classifier 2 (Category + Summary)
+   → Store in PostgreSQL
+   → Send acknowledgment email
