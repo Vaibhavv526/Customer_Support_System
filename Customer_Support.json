@@ -1,0 +1,942 @@
+{
+  "name": "Customer_Support",
+  "nodes": [
+    {
+      "parameters": {
+        "options": {}
+      },
+      "type": "n8n-nodes-base.emailReadImap",
+      "typeVersion": 2.1,
+      "position": [
+        -576,
+        -160
+      ],
+      "id": "46973110-1b66-417d-9a38-761659ad4c05",
+      "name": "Email Trigger (IMAP)",
+      "credentials": {
+        "imap": {
+          "id": "cgJYfS6xVkC679ql",
+          "name": "Vaibhav_gmail"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "return items.map(item => {\n  const e = item.json;\n\n  // --- Extract fields safely ---\n  let from = \"\";\n  let subject = e.subject || \"\";\n  let body = e.textPlain || e.text || \"\";\n\n  // Handle sender formats\n  if (e.from?.value?.[0]) {\n    from = e.from.value[0].address || \"\";\n  } else if (typeof e.from === \"string\") {\n    from = e.from;\n  }\n\n  // --- Clean body ---\n  const cleanBody = body\n    .replace(/\\r\\n/g, \"\\n\")\n    .replace(/\\n{2,}/g, \"\\n\")\n    .trim();\n\n  // --- Keyword detection (customize if needed) ---\n  const keywords = [\"feedback\", \"review\", \"suggestion\", \"thanks\", \"appreciate\"];\n  \n  const isRelevant = keywords.some(k =>\n    (subject + \" \" + cleanBody).toLowerCase().includes(k)\n  );\n\n  return {\n    json: {\n      ticketId: \"TKT-\" + Date.now(),\n      customerEmail: from,\n      customerName: from.split(\"@\")[0] || \"\",\n      subject: subject,\n      bodyText: cleanBody,\n      receivedAt: e.date || new Date().toISOString(),\n      isRelevant: isRelevant   // 👈 IMPORTANT: don't block, just tag\n    }\n  };\n});"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -368,
+        -160
+      ],
+      "id": "4a7871c3-6004-4c53-97a2-4d616b8fd88f",
+      "name": "Node_Only_read_specific_keyWords"
+    },
+    {
+      "parameters": {
+        "model": "openai/gpt-oss-120b:free",
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.lmChatOpenRouter",
+      "typeVersion": 1,
+      "position": [
+        -144,
+        48
+      ],
+      "id": "bf84e094-2e2a-4946-8fc4-c2b45f575c43",
+      "name": "OpenRouter Chat Model",
+      "credentials": {
+        "openRouterApi": {
+          "id": "UAke09jHLqB2fev0",
+          "name": "OpenRouter account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "=You are a customer support classifier.\nClassify the following email as either \"FEEDBACK\" or \"ISSUE\".\n\nFEEDBACK = appreciation, product reviews, suggestions, testimonials, NPS responses.\nISSUE = complaints, errors, bugs, billing problems, account access, abuse reports.\n\nReply with ONLY one word: FEEDBACK or ISSUE.\n\nEmail subject: {{$json.subject}}\nEmail body: {{$json.bodyText}}",
+        "batching": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.chainLlm",
+      "typeVersion": 1.9,
+      "position": [
+        -160,
+        -144
+      ],
+      "id": "18deadf2-2060-4db2-9d67-044ad8d88b7c",
+      "name": "Basic LLM Chain"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Use correct fields from previous node\nconst customerName = $('Node_Only_read_specific_keyWords').first().json.customerName\nconst customerEmail =$('Node_Only_read_specific_keyWords').first().json.customerEmail\nconst subject = $('Node_Only_read_specific_keyWords').first().json.subject\nconst bodyText = $('Node_Only_read_specific_keyWords').first().json.bodyText\n\n// Generate ticket ID (keep existing if present)\nconst ticketId = $('Node_Only_read_specific_keyWords').first().json.ticketId\n\n// Timestamp\nconst receivedAt = $('Node_Only_read_specific_keyWords').first().json.receivedAt\n\n// LLM outputs\nconst category = $input.first().json.text\nconst confidence = $json.confidence || 0;\nconst summary = $json.summary || \"\";\n\n// Final structured output\nreturn [\n  {\n    json: {\n      ticketId,\n      customerName,\n      customerEmail,\n      subject,\n      bodyText,\n      category,\n      confidence,\n      summary,\n      receivedAt\n    }\n  }\n];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        192,
+        -144
+      ],
+      "id": "8d6e6c83-8951-4130-b557-a4a90c13e8bc",
+      "name": "Code in JavaScript"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "5e60bed3-5187-4417-8dc9-a833c4f17855",
+              "leftValue": "={{ $json.subject }}",
+              "rightValue": "Feedback",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            },
+            {
+              "id": "1ffcc2c7-8f8a-413c-85cb-ba7ae75c7d02",
+              "leftValue": "={{ $json.subject }}",
+              "rightValue": "feedback",
+              "operator": {
+                "type": "string",
+                "operation": "equals",
+                "name": "filter.operator.equals"
+              }
+            },
+            {
+              "id": "95e634af-1a42-4e25-860a-ff4f2a04aefc",
+              "leftValue": "={{ $json.subject }}",
+              "rightValue": "FEEDBACK",
+              "operator": {
+                "type": "string",
+                "operation": "equals",
+                "name": "filter.operator.equals"
+              }
+            },
+            {
+              "id": "adfe14f5-a02d-4ae2-8fd6-e499cbfea46c",
+              "leftValue": "={{ $json.subject }}",
+              "rightValue": "FeedBack",
+              "operator": {
+                "type": "string",
+                "operation": "equals",
+                "name": "filter.operator.equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        400,
+        -144
+      ],
+      "id": "9a71ef50-b062-44e7-a11b-183424cedbd9",
+      "name": "If"
+    },
+    {
+      "parameters": {
+        "sendTo": "={{ $('Code in JavaScript').item.json.customerEmail }}",
+        "subject": "=Thanks for your feedback,  {{ $('Code in JavaScript').item.json.customerName }}",
+        "message": "=Hi {{ $('Code in JavaScript').item.json.customerName }},\n\nWe received your message and truly appreciate you taking the time \nto share it with us.\n\nThanks again for helping us improve!\n\nBest regards,  \nSunCredit",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.2,
+      "position": [
+        1072,
+        -368
+      ],
+      "id": "2bc10873-9af4-4726-aa8f-8c52e2380f79",
+      "name": "Acknowledgment",
+      "webhookId": "dc42caea-a733-4a8f-ba2c-7a0e9c41cf5b",
+      "credentials": {
+        "gmailOAuth2": {
+          "id": "34wBPCEBnNSJgjcM",
+          "name": "Gmail account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "append",
+        "documentId": {
+          "__rl": true,
+          "value": "https://docs.google.com/spreadsheets/d/1BfYJXFiwtE4FhQfV-xGLq4vvvYZOLePHWnYzvaeNvME/edit?usp=sharing",
+          "mode": "url"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "gid=0",
+          "mode": "list",
+          "cachedResultName": "Sheet1",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/1BfYJXFiwtE4FhQfV-xGLq4vvvYZOLePHWnYzvaeNvME/edit#gid=0"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "ticketId": "={{ $('Node_Only_read_specific_keyWords').item.json.ticketId }}",
+            "customerName": "={{ $('Node_Only_read_specific_keyWords').item.json.customerName }}",
+            "customerEmail": "={{ $('Node_Only_read_specific_keyWords').item.json.customerEmail }}",
+            "subject": "={{ $('Node_Only_read_specific_keyWords').item.json.subject }}",
+            "bodyText": "={{ $('Node_Only_read_specific_keyWords').item.json.bodyText }}",
+            "receivedAt": "={{ $('Node_Only_read_specific_keyWords').item.json.receivedAt }}"
+          },
+          "matchingColumns": [
+            "ticketId"
+          ],
+          "schema": [
+            {
+              "id": "ticketId",
+              "displayName": "ticketId",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "customerName",
+              "displayName": "customerName",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "customerEmail",
+              "displayName": "customerEmail",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "subject",
+              "displayName": "subject",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "bodyText",
+              "displayName": "bodyText",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "receivedAt",
+              "displayName": "receivedAt",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.7,
+      "position": [
+        656,
+        -352
+      ],
+      "id": "5fac875a-8e5b-40fc-ad8b-b771be31d989",
+      "name": "Important_Data",
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "L3lIwst7dCI1jTg3",
+          "name": "Google Sheets account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "schema": {
+          "__rl": true,
+          "mode": "list",
+          "value": "public"
+        },
+        "table": {
+          "__rl": true,
+          "value": "feedback",
+          "mode": "list",
+          "cachedResultName": "feedback"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "ticket_id": "={{ $json.ticketId }}",
+            "customer_email": "={{ $json.customerName }}",
+            "subject": "={{ $json.subject }}",
+            "body_text": "={{ $json.bodyText }}",
+            "status": "={{ $json.receivedAt }}",
+            "category": "=",
+            "customer_name": "={{ $json.customerName }}"
+          },
+          "matchingColumns": [
+            "id"
+          ],
+          "schema": [
+            {
+              "id": "id",
+              "displayName": "id",
+              "required": false,
+              "defaultMatch": true,
+              "display": true,
+              "type": "number",
+              "canBeUsedToMatch": true,
+              "removed": true
+            },
+            {
+              "id": "ticket_id",
+              "displayName": "ticket_id",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "customer_email",
+              "displayName": "customer_email",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "subject",
+              "displayName": "subject",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "body_text",
+              "displayName": "body_text",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "status",
+              "displayName": "status",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "received_at",
+              "displayName": "received_at",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "dateTime",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "category",
+              "displayName": "category",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "sentiment",
+              "displayName": "sentiment",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "customer_name",
+              "displayName": "customer_name",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        880,
+        -368
+      ],
+      "id": "c626bba5-1aaa-41a2-aed2-f5479c6822af",
+      "name": "Entire_Data",
+      "credentials": {
+        "postgres": {
+          "id": "huHCZUyKdCLV6sgj",
+          "name": "Postgres account 3"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "=You are an email classifier.\n\nClassify the email into:\n- ISSUE → real customer problem, complaint, bug, billing, account issue\n- IRRELEVANT → job alerts, newsletters, promotions, spam\n\nReply ONLY with: ISSUE or IRRELEVANT\n\nEmail subject: {{ $('Code in JavaScript').item.json.subject }}\nEmail body: {{ $('Code in JavaScript').item.json.bodyText }}",
+        "batching": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.chainLlm",
+      "typeVersion": 1.9,
+      "position": [
+        672,
+        -64
+      ],
+      "id": "c4a7a1dd-5186-46ff-bed7-9f2c41312a18",
+      "name": "Basic LLM Chain1"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "fb0ddcc5-ee58-4b0b-ae23-7a7a4aebd457",
+              "leftValue": "={{ $json.issueType }}",
+              "rightValue": "ISSUE",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            },
+            {
+              "id": "0366f078-9b66-4548-b289-e84b28e27c0d",
+              "leftValue": "={{ $json.issueType }}",
+              "rightValue": "Issue",
+              "operator": {
+                "type": "string",
+                "operation": "equals",
+                "name": "filter.operator.equals"
+              }
+            },
+            {
+              "id": "ebd06e13-e396-4ad9-9421-ddeaa0d0c884",
+              "leftValue": "={{ $json.issueType }}",
+              "rightValue": "issue",
+              "operator": {
+                "type": "string",
+                "operation": "equals",
+                "name": "filter.operator.equals"
+              }
+            }
+          ],
+          "combinator": "or"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        1200,
+        -64
+      ],
+      "id": "0d106d84-567c-46d3-bd33-086824c2c96a",
+      "name": "If1"
+    },
+    {
+      "parameters": {
+        "jsCode": "const result = $json.text || \"\";\n\nreturn [{\n  json: {\n    ...$json,\n    issueType: result.trim().toUpperCase()\n  }\n}];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        992,
+        -64
+      ],
+      "id": "683cc095-10cd-48a3-9b18-2c35de402c2c",
+      "name": "Code in JavaScript1"
+    },
+    {
+      "parameters": {
+        "model": "openai/gpt-oss-120b:free",
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.lmChatOpenRouter",
+      "typeVersion": 1,
+      "position": [
+        608,
+        144
+      ],
+      "id": "132ceea1-c038-4afd-8ccb-2a66c6029721",
+      "name": "OpenRouter Chat Model1",
+      "credentials": {
+        "openRouterApi": {
+          "id": "UAke09jHLqB2fev0",
+          "name": "OpenRouter account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "=You are a customer support issue classifier.\nClassify the following issue into exactly ONE category:\n\n- BILLING     → charges, invoices, refunds, subscription, payment failure\n- PRODUCT     → features, bugs, how-to, setup, performance issues\n- ACCOUNT     → login, password reset, 2FA, profile, data access\n- PAYMENT     → transaction errors, card declined, bank disputes\n- ABUSE       → harassment, threats, policy violations, bullying\n- OTHER       → anything that doesn't fit above\n\nReturn JSON only:\n{\n  \"category\": \"BILLING|PRODUCT|ACCOUNT|PAYMENT|ABUSE|OTHER\",\n  \"confidence\": 0.0-1.0,\n  \"summary\": \"one sentence describing the issue\"\n}\n\nCustomer issue:\nSubject: {{ $('Code in JavaScript').item.json.subject }}\nBody: {{ $('Code in JavaScript').item.json.bodyText }}\nCustomer Name: {{ $('Code in JavaScript').item.json.customerName }}\nCustomer Email: {{ $('Code in JavaScript').item.json.customerEmail }}",
+        "batching": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.chainLlm",
+      "typeVersion": 1.9,
+      "position": [
+        1488,
+        -256
+      ],
+      "id": "8b3fb5f7-df52-4707-845a-ae3a1d6d4453",
+      "name": "Basic LLM Chain2"
+    },
+    {
+      "parameters": {
+        "jsCode": "let raw = $json.text || $json.response || \"\";\n\n// Try to extract JSON safely\nlet parsed;\n\ntry {\n  parsed = JSON.parse(raw);\n} catch (e) {\n  // fallback: try to extract JSON substring\n  const match = raw.match(/\\{[\\s\\S]*\\}/);\n  parsed = match ? JSON.parse(match[0]) : {};\n}\n\nreturn [{\n  json: {\n    ...$json,\n    category: parsed.category || \"OTHER\",\n    confidence: parsed.confidence || 0,\n    summary: parsed.summary || \"\"\n  }\n}];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1824,
+        -336
+      ],
+      "id": "c16fe816-b6a3-4df5-8119-099f7be3c6e4",
+      "name": "Code in JavaScript2"
+    },
+    {
+      "parameters": {
+        "schema": {
+          "__rl": true,
+          "mode": "list",
+          "value": "public"
+        },
+        "table": {
+          "__rl": true,
+          "value": "tickets",
+          "mode": "list",
+          "cachedResultName": "tickets"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "ticket_id": "={{ $('If').item.json.ticketId }}",
+            "customer_email": "={{ $('If').item.json.customerEmail }}",
+            "customer_name": "={{ $('If').item.json.customerName }}",
+            "subject": "={{ $('If').item.json.subject }}",
+            "body_text": "={{ $('If').item.json.bodyText }}",
+            "category": "={{ $('If').item.json.category }}",
+            "confidence": "={{ $('If').item.json.confidence }}",
+            "summary": "={{ $('If').item.json.summary }}"
+          },
+          "matchingColumns": [
+            "id"
+          ],
+          "schema": [
+            {
+              "id": "id",
+              "displayName": "id",
+              "required": false,
+              "defaultMatch": true,
+              "display": true,
+              "type": "number",
+              "canBeUsedToMatch": true,
+              "removed": true
+            },
+            {
+              "id": "ticket_id",
+              "displayName": "ticket_id",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "customer_email",
+              "displayName": "customer_email",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "customer_name",
+              "displayName": "customer_name",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "subject",
+              "displayName": "subject",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "body_text",
+              "displayName": "body_text",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "category",
+              "displayName": "category",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "confidence",
+              "displayName": "confidence",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "number",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "summary",
+              "displayName": "summary",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "rag_response",
+              "displayName": "rag_response",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "status",
+              "displayName": "status",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "priority",
+              "displayName": "priority",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "resolution_status",
+              "displayName": "resolution_status",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "created_at",
+              "displayName": "created_at",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "dateTime",
+              "canBeUsedToMatch": true
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        2032,
+        -336
+      ],
+      "id": "14696be9-c746-4e48-9a2d-dea272219e9b",
+      "name": "Insert rows in a table",
+      "credentials": {
+        "postgres": {
+          "id": "7QtWO1tW10mDDGrH",
+          "name": "Customer_Issue"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "model": "openai/gpt-oss-120b:free",
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.lmChatOpenRouter",
+      "typeVersion": 1,
+      "position": [
+        1488,
+        -128
+      ],
+      "id": "cb22e00a-84e3-412b-8f4d-5c79345bd6b6",
+      "name": "OpenRouter Chat Model2",
+      "credentials": {
+        "openRouterApi": {
+          "id": "UAke09jHLqB2fev0",
+          "name": "OpenRouter account"
+        }
+      }
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Email Trigger (IMAP)": {
+      "main": [
+        [
+          {
+            "node": "Node_Only_read_specific_keyWords",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "OpenRouter Chat Model": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "Basic LLM Chain",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Node_Only_read_specific_keyWords": {
+      "main": [
+        [
+          {
+            "node": "Basic LLM Chain",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Basic LLM Chain": {
+      "main": [
+        [
+          {
+            "node": "Code in JavaScript",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code in JavaScript": {
+      "main": [
+        [
+          {
+            "node": "If",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "If": {
+      "main": [
+        [
+          {
+            "node": "Important_Data",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Basic LLM Chain1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Important_Data": {
+      "main": [
+        [
+          {
+            "node": "Entire_Data",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Entire_Data": {
+      "main": [
+        [
+          {
+            "node": "Acknowledgment",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Acknowledgment": {
+      "main": [
+        []
+      ]
+    },
+    "Basic LLM Chain1": {
+      "main": [
+        [
+          {
+            "node": "Code in JavaScript1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "If1": {
+      "main": [
+        [
+          {
+            "node": "Basic LLM Chain2",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code in JavaScript1": {
+      "main": [
+        [
+          {
+            "node": "If1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "OpenRouter Chat Model1": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "Basic LLM Chain1",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Basic LLM Chain2": {
+      "main": [
+        [
+          {
+            "node": "Code in JavaScript2",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code in JavaScript2": {
+      "main": [
+        [
+          {
+            "node": "Insert rows in a table",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "OpenRouter Chat Model2": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "Basic LLM Chain2",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate"
+  },
+  "versionId": "443a11f8-baeb-4052-861d-c06581245cc6",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "7b7c795b47c6dba94894faa2b6a228805b30ae4f400ccecc02f9d4483cf11443"
+  },
+  "id": "sMXXQ3QThXgLfjEA",
+  "tags": []
+}
